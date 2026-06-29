@@ -51,6 +51,7 @@ export default defineConfig({
       "activeTab",
       "storage",
       "tabs",
+      "tabGroups",
       "contextMenus",
     ],
     host_permissions: ["<all_urls>"],

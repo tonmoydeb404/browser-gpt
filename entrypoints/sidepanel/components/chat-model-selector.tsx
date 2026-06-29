@@ -9,7 +9,7 @@ import {
   ModelSelectorLogo,
   ModelSelectorName,
 } from "@/components/ai-elements/model-selector";
-import { Button, ButtonProps } from "@/components/ui/button";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import { useConfig } from "@/contexts/config";
 
 type Props = {};

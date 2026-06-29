@@ -7,12 +7,15 @@
  * extraction) reuse these too.
  */
 
+import type { ImageData } from "./agents/types";
+
 export interface PageContent {
   url: string;
   title: string;
   text: string;
   markdown: string;
   meta: Record<string, string>;
+  images: ImageData[];
 }
 
 export interface DomContext {
@@ -217,5 +220,79 @@ export function extractPageContent(): PageContent {
     text: document.body?.innerText ?? "",
     markdown: walkToMarkdown(document.body).replace(/\n{3,}/g, "\n\n").trim(),
     meta,
+    images: extractImages(),
   };
+}
+
+const LAZY_SRC_ATTRS = ["data-src", "data-original", "data-lazy-src", "data-lazy"];
+
+/**
+ * Collects all visible <img> elements with their resolved source URL, alt
+ * text, and intrinsic dimensions. Relative URLs are resolved against the
+ * document and results are de-duplicated by source. Shared by page extraction
+ * (`extractPageContent`) and the `list_images` agent tool.
+ */
+export function extractImages(): ImageData[] {
+  const images: ImageData[] = [];
+  const seen = new Set<string>();
+
+  document.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+    let raw: string | null = null;
+
+    // Prefer the browser-resolved source (handles srcset/picture).
+    if (img.currentSrc) {
+      raw = img.currentSrc;
+    } else if (img.src && !img.src.startsWith("data:")) {
+      raw = img.src;
+    }
+
+    // Fall back to lazy-loading attributes or the first srcset entry.
+    if (!raw) {
+      for (const attr of LAZY_SRC_ATTRS) {
+        const v = img.getAttribute(attr);
+        if (v) {
+          raw = v;
+          break;
+        }
+      }
+    }
+    if (!raw) {
+      const srcset = img.getAttribute("srcset") || img.srcset || "";
+      const first = srcset.split(",")[0]?.trim().split(/\s+/)[0];
+      if (first) raw = first;
+    }
+
+    if (!raw) return;
+
+    // Resolve relative URLs against the document.
+    let resolved: string;
+    try {
+      resolved = new URL(raw, location.href).href;
+    } catch {
+      return;
+    }
+
+    // Keep only http(s), data:, and blob: sources.
+    if (
+      !resolved.startsWith("http:") &&
+      !resolved.startsWith("https:") &&
+      !resolved.startsWith("data:") &&
+      !resolved.startsWith("blob:")
+    ) {
+      return;
+    }
+
+    if (seen.has(resolved)) return;
+    seen.add(resolved);
+
+    const alt = (img.alt || "").trim();
+    images.push({
+      src: resolved,
+      alt: alt || undefined,
+      width: img.naturalWidth || img.width || undefined,
+      height: img.naturalHeight || img.height || undefined,
+    });
+  });
+
+  return images;
 }

@@ -4,13 +4,16 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
+import type { ConfirmationBridge } from "@/contexts/conversations/agents/confirm";
 import type { UIMessage } from "ai";
 import { ConversationsMessage } from "./conversations-message";
 
 export const ConversationsMessages = ({
   messages,
+  confirmBridge,
 }: {
   messages: UIMessage[];
+  confirmBridge?: ConfirmationBridge;
 }) => {
   return (
     <Conversation>
@@ -22,7 +25,11 @@ export const ConversationsMessages = ({
           />
         )}
         {messages.map((message) => (
-          <ConversationsMessage key={message.id} message={message} />
+          <ConversationsMessage
+            confirmBridge={confirmBridge}
+            key={message.id}
+            message={message}
+          />
         ))}
       </ConversationContent>
       <ConversationScrollButton />

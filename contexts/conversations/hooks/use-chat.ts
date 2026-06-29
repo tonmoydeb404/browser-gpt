@@ -12,10 +12,23 @@ import {
   type UIMessageChunk,
   type UIMessageStreamWriter,
 } from "ai";
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
 import { createModel } from "@/contexts/config/hooks/openrouter";
+import { ConfirmationBridge } from "../agents/confirm";
+import { getProfile } from "../agents/registry";
+import type {
+  AgentProfileId,
+  AgentStepData,
+  AskRequest,
+  ChatMode,
+  ImageData,
+  SitemapData,
+  SourceCitation,
+  ToolContext,
+} from "../agents/types";
+import { buildAgentTools } from "../agents/tools";
 import { isContentAvailable, readActiveTabContent } from "../messaging";
 import { ensurePageIndexed, getPageIndex, type RagStatusData } from "../rag";
 import { retrieveRelevant } from "../rag/retrieve";
@@ -35,6 +48,7 @@ export interface ChatSettings {
   model: string | null;
   autoAttach: boolean;
   supportsTools: boolean;
+  mode: ChatMode;
 }
 
 /**
@@ -65,6 +79,8 @@ function writeRagStatus(
 class BrowserGptTransport implements ChatTransport<UIMessage> {
   constructor(
     private readonly settingsRef: { current: ChatSettings },
+    private readonly agentProfileRef: { current: AgentProfileId },
+    private readonly confirmBridge: ConfirmationBridge,
     private readonly onRagError: (message: string) => void,
   ) {}
 
@@ -72,7 +88,8 @@ class BrowserGptTransport implements ChatTransport<UIMessage> {
     messages,
     abortSignal,
   }: SendMessagesOptions): Promise<ReadableStream<UIMessageChunk>> {
-    const { apiKey, model, autoAttach, supportsTools } = this.settingsRef.current;
+    const { apiKey, model, autoAttach, supportsTools, mode } =
+      this.settingsRef.current;
 
     if (!model) {
       throw new Error("No model selected. Open settings to select a model.");
@@ -88,8 +105,88 @@ class BrowserGptTransport implements ChatTransport<UIMessage> {
       execute: async ({ writer }) => {
         let system = SYSTEM_PROMPT_BASE;
         let tools: ToolSet = {};
+        let maxSteps = MAX_TOOL_STEPS;
 
-        if (autoAttach) {
+        if (mode === "agent") {
+          const profile = getProfile(this.agentProfileRef.current);
+          system += profile.systemPrompt;
+          maxSteps = profile.maxSteps;
+
+          if (supportsTools) {
+            const stepMap = new Map<string, AgentStepData>();
+            const stepOrder: string[] = [];
+            const allSources: SourceCitation[] = [];
+            const sitemapNodes: SitemapData["nodes"] = [];
+            const sitemapEdges: SitemapData["edges"] = [];
+            const allImages: ImageData[] = [];
+
+            const toolCtx: ToolContext = {
+              confirm: (req) => this.confirmBridge.request(req, writer),
+              ask: (req) => this.confirmBridge.ask(req, writer),
+              emitStep: (step) => {
+                if (!stepMap.has(step.label)) stepOrder.push(step.label);
+                stepMap.set(step.label, step);
+                writer.write({
+                  type: "data-agent-steps",
+                  id: "agent-steps",
+                  data: { steps: stepOrder.map((k) => stepMap.get(k)!) },
+                });
+              },
+              emitSources: (sources) => {
+                for (const s of sources) {
+                  if (!allSources.some((e) => e.url === s.url))
+                    allSources.push(s);
+                }
+                writer.write({
+                  type: "data-sources",
+                  id: "sources",
+                  data: { sources: allSources },
+                });
+              },
+              emitSitemap: (data) => {
+                for (const node of data.nodes) {
+                  if (!sitemapNodes.some((n) => n.id === node.id)) {
+                    sitemapNodes.push(node);
+                  }
+                }
+                for (const edge of data.edges) {
+                  if (
+                    !sitemapEdges.some(
+                      (e) => e.source === edge.source && e.target === edge.target,
+                    )
+                  ) {
+                    sitemapEdges.push(edge);
+                  }
+                }
+                writer.write({
+                  type: "data-sitemap",
+                  id: "sitemap",
+                  data: { nodes: sitemapNodes, edges: sitemapEdges },
+                });
+              },
+              emitImages: (images) => {
+                for (const img of images) {
+                  if (!allImages.some((i) => i.src === img.src)) {
+                    allImages.push(img);
+                  }
+                }
+                writer.write({
+                  type: "data-images",
+                  id: "images",
+                  data: { images: allImages },
+                });
+              },
+            };
+
+            tools = buildAgentTools(profile.id, toolCtx);
+          }
+        }
+
+        const skipPageContext =
+          mode === "agent" &&
+          getProfile(this.agentProfileRef.current).skipPageContext === true;
+
+        if (autoAttach && !skipPageContext) {
           const content = await readActiveTabContent();
 
           if (!isContentAvailable(content)) {
@@ -99,9 +196,22 @@ class BrowserGptTransport implements ChatTransport<UIMessage> {
               url: content.url,
             });
           } else {
-            // Only annotate when indexing actually happens — not on cache hits.
+            // Annotate when indexing actually happens — not on cache hits.
             const cached = await getPageIndex(content.url);
             const isFresh = !cached;
+
+            // Proactive image awareness: a compact count + alt coverage hint
+            // so the model knows images exist and can call list_images for
+            // sources/previews in any query.
+            if (content.images.length > 0) {
+              const withAlt = content.images.filter(
+                (i) => i.alt && i.alt.trim(),
+              ).length;
+              system +=
+                `\n\nImages on this page: ${content.images.length} ` +
+                `(${withAlt} with descriptive alt text). ` +
+                `Use the list_images tool to extract their sources and render a preview gallery.`;
+            }
 
             if (isFresh) {
               writeRagStatus(writer, {
@@ -133,6 +243,7 @@ class BrowserGptTransport implements ChatTransport<UIMessage> {
               if (supportsTools && pageIndex.chunks.length > 0) {
                 const pageUrl = pageIndex.url;
                 tools = {
+                  ...tools,
                   search_page: tool({
                     description:
                       "Search the current page for passages relevant to a query. " +
@@ -194,7 +305,7 @@ class BrowserGptTransport implements ChatTransport<UIMessage> {
           system,
           messages: modelMessages,
           tools,
-          stopWhen: stepCountIs(MAX_TOOL_STEPS),
+          stopWhen: stepCountIs(maxSteps),
           abortSignal,
         });
 
@@ -223,11 +334,18 @@ export function useBrowserGptChat(
   const { id, messages: initialMessages, onFinish } = options;
   const settingsRef = useRef(settings);
   const onFinishRef = useRef(onFinish);
+  const agentProfileRef = useRef<AgentProfileId>("default");
+  const confirmBridge = useMemo(() => new ConfirmationBridge(), []);
 
   const transport = useMemo(
     () =>
-      new BrowserGptTransport(settingsRef, (message) => toast.error(message)),
-    [],
+      new BrowserGptTransport(
+        settingsRef,
+        agentProfileRef,
+        confirmBridge,
+        (message) => toast.error(message),
+      ),
+    [confirmBridge],
   );
 
   const chat = useChat({
@@ -237,9 +355,13 @@ export function useBrowserGptChat(
     onFinish: ({ messages }) => onFinishRef.current?.(messages),
   });
 
+  const setAgentProfile = useCallback((profileId: AgentProfileId) => {
+    agentProfileRef.current = profileId;
+  }, []);
+
   // Keep the refs in sync so the transport/callback always read current values.
   settingsRef.current = settings;
   onFinishRef.current = onFinish;
 
-  return chat;
+  return { ...chat, confirmBridge, setAgentProfile };
 }

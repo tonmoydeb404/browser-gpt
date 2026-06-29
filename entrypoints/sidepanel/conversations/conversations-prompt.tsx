@@ -13,14 +13,21 @@ import {
   type DomSelection,
 } from "@/contexts/conversations/dom-selection";
 import { useConversations } from "@/contexts/conversations";
-import type { ChatStatus } from "ai";
-import { useState } from "react";
+import {
+  getSlashCommands,
+  parseSlashCommand,
+} from "@/contexts/conversations/agents/registry";
+import type { AgentProfile, AgentProfileId } from "@/contexts/conversations/agents/types";
+import type { ChatStatus, UIMessage } from "ai";
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { MousePointerClick, XIcon } from "lucide-react";
 import { ChatModelSelectorTrigger } from "../components/chat-model-selector";
+import { useHistoryNavigation } from "./use-history-navigation";
 
 interface Props {
   status: ChatStatus;
-  onSend: (text: string) => void;
+  messages: UIMessage[];
+  onSend: (text: string, profile: AgentProfileId) => void;
   onStop: () => void;
 }
 
@@ -37,9 +44,42 @@ function formatDomSelection(s: DomSelection): string {
   );
 }
 
-export const ConversationsPrompt = ({ status, onSend, onStop }: Props) => {
+function SlashCommandMenu({
+  commands,
+  onSelect,
+}: {
+  commands: AgentProfile[];
+  onSelect: (command: string) => void;
+}) {
+  return (
+    <div className="absolute bottom-full left-4 right-4 z-50 mb-2 max-h-64 overflow-y-auto rounded-xl border bg-popover p-1 shadow-lg">
+      <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+        Agent Commands
+      </p>
+      {commands.map((cmd) => (
+        <button
+          key={cmd.id}
+          className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted"
+          onClick={() => onSelect(cmd.command!)}
+          type="button"
+        >
+          <span className="min-w-16 font-medium text-primary">
+            {cmd.label}
+          </span>
+          <span className="truncate text-muted-foreground">
+            {cmd.description}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export const ConversationsPrompt = ({ status, messages, onSend, onStop }: Props) => {
   const [text, setText] = useState<string>("");
-  const { pendingSelection, clearPendingSelection } = useConversations();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { mode, pendingSelection, clearPendingSelection } =
+    useConversations();
   const {
     selections,
     isPicking,
@@ -49,9 +89,61 @@ export const ConversationsPrompt = ({ status, onSend, onStop }: Props) => {
     clear: clearSelections,
   } = useDomSelections();
 
+  const userTexts = useMemo(
+    () =>
+      messages
+        .filter((m) => m.role === "user")
+        .map((m) =>
+          m.parts
+            .filter((p): p is { type: "text"; text: string } => p.type === "text")
+            .map((p) => p.text)
+            .join(""),
+        )
+        .filter((t) => t.trim()),
+    [messages],
+  );
+
+  const { navigateUp, navigateDown, reset } = useHistoryNavigation(userTexts);
+
+  const slashCommands = useMemo(() => getSlashCommands(), []);
+  const slashQuery =
+    mode === "agent" &&
+    text.startsWith("/") &&
+    !text.includes(" ")
+      ? text.slice(1).toLowerCase()
+      : null;
+  const filteredCommands = useMemo(
+    () =>
+      slashQuery !== null
+        ? slashCommands.filter((c) => c.command!.startsWith(slashQuery))
+        : [],
+    [slashCommands, slashQuery],
+  );
+  const showSlashMenu = slashQuery !== null && filteredCommands.length > 0;
+
+  const selectCommand = (command: string) => {
+    setText(`/${command} `);
+  };
+
   const handleSubmit = (message: PromptInputMessage) => {
-    const content = message.text.trim();
-    if (!content && !pendingSelection && selections.length === 0) {
+    let content = message.text.trim();
+    let profile: AgentProfileId = "default";
+
+    if (mode === "agent") {
+      const parsed = parseSlashCommand(content);
+      if (parsed) {
+        profile = parsed.profile;
+      }
+    }
+
+    // Allow bare slash commands (e.g. /index) to fire with no extra text;
+    // only bail when there's nothing to send AND no command was invoked.
+    if (
+      !content &&
+      !pendingSelection &&
+      selections.length === 0 &&
+      profile === "default"
+    ) {
       return;
     }
 
@@ -71,13 +163,62 @@ export const ConversationsPrompt = ({ status, onSend, onStop }: Props) => {
       clearPendingSelection();
     }
 
-    onSend(final);
+    onSend(final, profile);
+    reset();
     setText("");
   };
 
+  const handleHistoryKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "ArrowUp") {
+        const beforeCursor = e.currentTarget.value.substring(
+          0,
+          e.currentTarget.selectionStart ?? 0,
+        );
+        if (beforeCursor.includes("\n")) return;
+        const value = navigateUp(e.currentTarget.value);
+        if (value !== null) {
+          e.preventDefault();
+          setText(value);
+          const el = textareaRef.current;
+          if (el) {
+            requestAnimationFrame(() =>
+              el.setSelectionRange(value.length, value.length),
+            );
+          }
+        }
+      }
+
+      if (e.key === "ArrowDown") {
+        const afterCursor = e.currentTarget.value.substring(
+          e.currentTarget.selectionEnd ?? 0,
+        );
+        if (afterCursor.includes("\n")) return;
+        const value = navigateDown();
+        if (value !== null) {
+          e.preventDefault();
+          setText(value);
+          const el = textareaRef.current;
+          if (el) {
+            requestAnimationFrame(() =>
+              el.setSelectionRange(value.length, value.length),
+            );
+          }
+        }
+      }
+    },
+    [navigateUp, navigateDown],
+  );
+
   return (
     <div className="grid shrink-0 gap-4 pt-4">
-      <div className="w-full px-4 pb-4">
+      <div className="relative w-full px-4 pb-4">
+        {showSlashMenu && (
+          <SlashCommandMenu
+            commands={filteredCommands}
+            onSelect={selectCommand}
+          />
+        )}
         <PromptInput onSubmit={handleSubmit}>
           <PromptInputBody>
             {pendingSelection && (
@@ -139,8 +280,17 @@ export const ConversationsPrompt = ({ status, onSend, onStop }: Props) => {
             )}
 
             <PromptInputTextarea
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Send a message..."
+              onChange={(e) => {
+                setText(e.target.value);
+                reset();
+              }}
+              onKeyDown={handleHistoryKeyDown}
+              placeholder={
+                mode === "agent"
+                  ? "Type / for commands, or ask anything..."
+                  : "Send a message..."
+              }
+              ref={textareaRef}
               value={text}
             />
           </PromptInputBody>

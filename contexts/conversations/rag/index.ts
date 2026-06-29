@@ -40,7 +40,8 @@ const EMPTY_INDEX_BASE = (content: PageContent): PageIndex => ({
 
 /**
  * Ensure a page is indexed (chunked + embedded + summarized) and cached in
- * IndexedDB keyed by URL. Returns the cached index on repeat visits.
+ * IndexedDB keyed by URL. Returns the cached index on repeat visits — pages
+ * are indexed once and reused until explicitly re-indexed (e.g. via /index).
  */
 export async function ensurePageIndexed(
   content: PageContent,

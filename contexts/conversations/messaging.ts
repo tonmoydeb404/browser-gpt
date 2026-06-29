@@ -9,6 +9,7 @@ export const EMPTY_CONTENT: PageContent = {
   text: "",
   markdown: "",
   meta: {},
+  images: [],
 };
 
 interface ReadTabResponse {

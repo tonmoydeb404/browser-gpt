@@ -1,3 +1,4 @@
+import type { ChatMode } from "./agents/types";
 import type { UIMessage } from "ai";
 import { createContext, useContext } from "react";
 import type { PendingSelection } from "./selection-store";
@@ -23,6 +24,10 @@ export interface ConversationsContextValue {
   /** Context-menu text selection awaiting discussion (Feature 1). */
   pendingSelection: PendingSelection | null;
   clearPendingSelection: () => void;
+
+  /** Current chat mode — transient, switchable mid-conversation. */
+  mode: ChatMode;
+  setMode: (mode: ChatMode) => void;
 }
 
 export const ConversationsContext =
