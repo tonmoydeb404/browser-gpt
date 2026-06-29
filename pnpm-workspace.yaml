@@ -1,0 +1,7 @@
+allowBuilds:
+  '@openrouter/sdk': true
+  esbuild: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true
+  spawn-sync: true
