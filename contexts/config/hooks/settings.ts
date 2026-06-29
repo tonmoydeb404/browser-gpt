@@ -6,8 +6,6 @@ export interface Settings {
   apiKey: string;
   model: string | null;
   autoAttach: boolean;
-  agentMode: boolean;
-  maxAgentSteps: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -15,8 +13,6 @@ export const DEFAULT_SETTINGS: Settings = {
   apiKey: "",
   model: null,
   autoAttach: true,
-  agentMode: false,
-  maxAgentSteps: 15,
 };
 
 const STORAGE_KEY = "browser-gpt-settings";

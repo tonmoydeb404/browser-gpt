@@ -1,5 +1,5 @@
-import { nanoid } from "nanoid";
 import type { UIMessage } from "ai";
+import { nanoid } from "nanoid";
 import { db, type MessageRow, type Session } from "./db";
 
 export type { Session } from "./db";

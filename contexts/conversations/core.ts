@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai";
 import { createContext, useContext } from "react";
-import type { Session } from "@/lib/conversations/store";
+import type { PendingSelection } from "./selection-store";
+import type { Session } from "./session-store";
 
 export interface ActiveSession {
   id: string;
@@ -18,6 +19,10 @@ export interface ConversationsContextValue {
   isSessionsOpen: boolean;
   openSessions: () => void;
   closeSessions: () => void;
+
+  /** Context-menu text selection awaiting discussion (Feature 1). */
+  pendingSelection: PendingSelection | null;
+  clearPendingSelection: () => void;
 }
 
 export const ConversationsContext =

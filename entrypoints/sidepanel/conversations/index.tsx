@@ -1,8 +1,8 @@
 import { Spinner } from "@/components/ui/spinner";
 import { useConfig } from "@/contexts/config";
 import { useConversations, type ActiveSession } from "@/contexts/conversations";
-import { saveMessages } from "@/lib/conversations/store";
-import { useBrowserChat } from "@/lib/use-browser-chat";
+import { useBrowserGptChat } from "@/contexts/conversations/hooks/use-chat";
+import { saveMessages } from "@/contexts/conversations/session-store";
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
@@ -25,17 +25,16 @@ export const Conversations = () => {
 };
 
 const ChatRunner = ({ session }: { session: ActiveSession }) => {
-  const { settings } = useConfig();
+  const { settings, model } = useConfig();
 
   const browserSettings = useMemo(
     () => ({
       apiKey: settings.value.apiKey,
       model: settings.value.model,
       autoAttach: settings.value.autoAttach,
-      agentMode: settings.value.agentMode,
-      maxAgentSteps: settings.value.maxAgentSteps,
+      supportsTools: model.value?.supportsTools ?? false,
     }),
-    [settings],
+    [settings, model],
   );
 
   const handleFinish = useCallback(
@@ -47,7 +46,7 @@ const ChatRunner = ({ session }: { session: ActiveSession }) => {
     [session.id],
   );
 
-  const chat = useBrowserChat(browserSettings, {
+  const chat = useBrowserGptChat(browserSettings, {
     id: session.id,
     messages: session.messages,
     onFinish: handleFinish,
@@ -62,7 +61,9 @@ const ChatRunner = ({ session }: { session: ActiveSession }) => {
   return (
     <div className="relative flex size-full flex-col overflow-hidden">
       <ConversationsHeader />
-      <ConversationsMessages messages={chat.messages} />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <ConversationsMessages messages={chat.messages} />
+      </div>
       <ConversationsPrompt
         onStop={chat.stop}
         onSend={(text) => chat.sendMessage({ text })}

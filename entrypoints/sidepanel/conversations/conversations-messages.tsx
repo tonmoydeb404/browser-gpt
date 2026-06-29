@@ -12,20 +12,15 @@ export const ConversationsMessages = ({
 }: {
   messages: UIMessage[];
 }) => {
-  if (messages.length === 0) {
-    return (
-      <Conversation className="flex-1">
-        <ConversationEmptyState
-          title="Start a conversation"
-          description="Ask anything — your chats are saved locally."
-        />
-      </Conversation>
-    );
-  }
-
   return (
-    <Conversation className="flex-1">
+    <Conversation>
       <ConversationContent>
+        {messages.length === 0 && (
+          <ConversationEmptyState
+            title="Start a conversation"
+            description="Ask anything — your chats are saved locally."
+          />
+        )}
         {messages.map((message) => (
           <ConversationsMessage key={message.id} message={message} />
         ))}

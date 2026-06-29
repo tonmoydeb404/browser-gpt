@@ -46,7 +46,13 @@ export default defineConfig({
   manifest: {
     name: "Browser GPT",
     description: "Chat with AI about any tab in your browser sidebar",
-    permissions: ["sidePanel", "scripting", "activeTab", "storage", "tabs"],
+    permissions: [
+      "sidePanel",
+      "activeTab",
+      "storage",
+      "tabs",
+      "contextMenus",
+    ],
     host_permissions: ["<all_urls>"],
     content_security_policy: {
       extension_pages:

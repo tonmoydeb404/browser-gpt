@@ -1,3 +1,4 @@
+/// <reference types="chrome" />
 /**
  * Local embeddings via transformers.js (ONNX Runtime Web).
  *
@@ -6,14 +7,15 @@
  * SharedArrayBuffer / worker CSP requirements inside a Chrome extension.
  */
 
-
-
 const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
 let extractorPromise: Promise<Embedder> | null = null;
 
 interface Embedder {
-  (texts: string[], options: { pooling: "mean"; normalize: true }): Promise<{
+  (
+    texts: string[],
+    options: { pooling: "mean"; normalize: true },
+  ): Promise<{
     tolist: () => number[][];
   }>;
 }

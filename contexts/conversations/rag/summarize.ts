@@ -1,6 +1,6 @@
 import { generateText } from "ai";
-import { createModel } from "../contexts/config/hooks/openrouter";
-import type { PageContent } from "./tab-extractor";
+import { createModel } from "@/contexts/config/hooks/openrouter";
+import type { PageContent } from "../messaging";
 
 const SUMMARY_SYSTEM =
   "You generate concise, faithful reference summaries of web pages for a browser assistant. " +

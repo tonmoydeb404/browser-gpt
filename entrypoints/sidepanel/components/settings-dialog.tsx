@@ -10,7 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useConfig } from "@/contexts/config";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export const SettingsDialog = () => {
   const { settings } = useConfig();

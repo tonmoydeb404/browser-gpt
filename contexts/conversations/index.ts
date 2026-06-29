@@ -4,3 +4,4 @@ export type {
   ConversationsContextValue,
 } from "./core";
 export { ConversationsProvider } from "./provider";
+export type { PendingSelection } from "./selection-store";

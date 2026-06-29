@@ -4,7 +4,7 @@ import { useOnboarding } from "@/entrypoints/sidepanel/onboarding/onboarding";
 import { getEnvConfig } from "@/lib/env";
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiKeyStep } from "./api-key-step";
 import { ModelStep } from "./model-step";
 import { NameStep } from "./name-step";

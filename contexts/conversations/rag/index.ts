@@ -1,10 +1,28 @@
+import type { PageContent } from "../messaging";
 import { chunkText } from "./chunker";
 import { embedBatch } from "./embed";
 import { getPageIndex, setPageIndex, type PageIndex } from "./store";
-import { summarizePage } from "../summarize";
-import type { PageContent } from "../tab-extractor";
+
+export { getPageIndex } from "./store";
+import { summarizePage } from "./summarize";
 
 export type IndexStatus = "idle" | "indexing" | "ready" | "error";
+
+/**
+ * RAG status emitted as a `data-rag-status` message part so the UI can show
+ * what's happening during indexing (and surface failures).
+ */
+export type RagPhase = "indexing" | "ready" | "fallback" | "unavailable";
+
+export interface RagStatusData {
+  phase: RagPhase;
+  title?: string;
+  url?: string;
+  /** Number of indexed passages available for retrieval. */
+  chunkCount?: number;
+  /** Present when indexing failed and we fell back to raw content. */
+  error?: string;
+}
 
 export interface EnsureIndexedOptions {
   apiKey: string;
